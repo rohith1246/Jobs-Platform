@@ -512,6 +512,18 @@ def jobs_page():
         matches_dict=matches_dict
     )
 
+@app.route("/matcher")
+def matcher_page():
+    config = SearchConfig.query.first()
+    matches = JobMatch.query.join(Job).filter(Job.is_active == True).order_by(JobMatch.fit_score.desc()).all()
+    matched_jobs = [{"job": m.job, "match": m} for m in matches]
+    return render_template(
+        "matcher.html",
+        config=config,
+        matched_jobs=matched_jobs,
+        matcher_status=MATCHER_STATUS
+    )
+
 @app.route("/scraper")
 def scraper_page():
     config = SearchConfig.query.first()
