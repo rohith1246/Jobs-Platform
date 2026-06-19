@@ -94,6 +94,32 @@ class JobMatch(db.Model):
 # Initialize DB tables on startup (compatible with gunicorn/Render)
 def _init_db():
     db.create_all()
+    
+    # Run manual migrations to add user_id column if it doesn't exist
+    try:
+        from sqlalchemy import text
+        bind_engine = db.engine
+        if "sqlite" not in str(bind_engine.url):
+            # Postgres migrations
+            db.session.execute(text('ALTER TABLE search_config ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES "user"(id) ON DELETE CASCADE;'))
+            db.session.execute(text('ALTER TABLE job_match ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES "user"(id) ON DELETE CASCADE;'))
+            db.session.commit()
+        else:
+            # Sqlite migrations
+            try:
+                db.session.execute(text('ALTER TABLE search_config ADD COLUMN user_id INTEGER REFERENCES "user"(id) ON DELETE CASCADE;'))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+            try:
+                db.session.execute(text('ALTER TABLE job_match ADD COLUMN user_id INTEGER REFERENCES "user"(id) ON DELETE CASCADE;'))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+    except Exception as e:
+        db.session.rollback()
+        logging.error(f"Migration error: {e}")
+
     # Seed admin user
     admin_email = "rohithbuildsofficial@gmail.com"
     admin = User.query.filter_by(email=admin_email).first()
