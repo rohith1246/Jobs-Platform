@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scrape Jobs — JobMatch AI</title>
+    <meta name="description" content="Run the AI job scraper — crawl LinkedIn, Naukri and Indeed and auto-match results to your resume.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0d0e12; --bg2: #13141a; --bg3: #1a1b22;
+            --accent: #f5b942; --accent-dim: rgba(245,185,66,0.1);
+            --accent-glow: rgba(245,185,66,0.25); --border: rgba(255,255,255,0.07);
+            --border-hover: rgba(245,185,66,0.3); --text: #f0f0f0;
+            --muted: #7a7f8e; --green: #22c55e; --blue: #38bdf8; --red: #ef4444;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+        /* NAV */
+        nav {
+            position: sticky; top: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 48px; height: 64px;
+            background: rgba(13,14,18,0.92); backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--border);
+        }
+        .nav-logo { font-size: 1.2rem; font-weight: 800; text-decoration: none; color: #fff; }
+        .nav-logo span { color: var(--accent); }
+        .nav-links { display: flex; align-items: center; gap: 28px; }
+        .nav-links a { color: var(--muted); text-decoration: none; font-size: 0.9rem; font-weight: 500; transition: color 0.2s; }
+        .nav-links a:hover, .nav-links a.active { color: #fff; }
+        .nav-cta { background: var(--accent); color: #0d0e12; padding: 8px 18px; border-radius: 8px; font-weight: 700; font-size: 0.85rem; text-decoration: none; }
+
+        /* PAGE HEADER */
+        .page-header {
+            padding: 56px 48px 40px;
+            border-bottom: 1px solid var(--border);
+            background: linear-gradient(180deg, rgba(245,185,66,0.04) 0%, transparent 100%);
+        }
+        .page-header-inner { max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 24px; }
+        .page-tag { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: var(--accent); margin-bottom: 12px; }
+        .page-title { font-size: 2.4rem; font-weight: 900; letter-spacing: -1px; margin-bottom: 8px; }
+        .page-sub { color: var(--muted); font-size: 0.95rem; max-width: 520px; line-height: 1.6; }
+
+        /* STATUS INDICATOR */
+        .status-pill {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 10px 20px; border-radius: 100px; font-size: 0.88rem; font-weight: 600;
+            border: 1px solid var(--border); background: var(--bg2);
+            transition: all 0.3s;
+        }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+        .status-pill.running { border-color: rgba(34,197,94,0.3); background: rgba(34,197,94,0.06); }
+        .status-pill.running .status-dot { background: var(--green); animation: pulse 1s infinite; }
+        .status-pill.completed { border-color: rgba(245,185,66,0.3); background: var(--accent-dim); }
+        .status-pill.completed .status-dot { background: var(--accent); }
+        .status-pill.failed { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.06); }
+        .status-pill.failed .status-dot { background: var(--red); }
+
+        /* MAIN GRID */
+        .main { max-width: 1200px; margin: 0 auto; padding: 40px 48px 80px; display: grid; grid-template-columns: 1fr 380px; gap: 28px; }
+
+        /* LEFT COLUMN */
+        .left-col { display: flex; flex-direction: column; gap: 24px; }
+
+        /* PANEL */
+        .panel {
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: 16px; padding: 28px; transition: border-color 0.3s;
+        }
+        .panel:hover { border-color: rgba(255,255,255,0.1); }
+        .panel-header { margin-bottom: 24px; }
+        .panel-title { font-size: 1rem; font-weight: 700; color: #fff; margin-bottom: 4px; }
+        .panel-sub { font-size: 0.82rem; color: var(--muted); }
+
+        /* STAT CARDS */
+        .stats-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
+        .stat-box {
+            background: var(--bg3); border: 1px solid var(--border);
+            border-radius: 12px; padding: 18px; text-align: center;
+            transition: all 0.3s;
+        }
+        .stat-box.active { border-color: var(--border-hover); background: var(--accent-dim); }
+        .stat-val { font-size: 1.8rem; font-weight: 900; color: #fff; letter-spacing: -1px; line-height: 1; margin-bottom: 4px; }
+        .stat-val.green { color: var(--green); }
+        .stat-val.accent { color: var(--accent); }
+        .stat-lbl { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); font-weight: 600; }
+
+        /* PLATFORM BUTTONS */
+        .platform-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
+        .platform-btn {
+            background: var(--bg3); border: 1px solid var(--border);
+            border-radius: 12px; padding: 16px 12px;
+            text-align: center; cursor: pointer; transition: all 0.2s;
+            color: var(--text); font-family: inherit; font-size: 0.88rem; font-weight: 600;
+            display: flex; flex-direction: column; align-items: center; gap: 8px;
+        }
+        .platform-btn:hover:not(:disabled) { border-color: var(--border-hover); background: var(--accent-dim); color: var(--accent); transform: translateY(-2px); }
+        .platform-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .platform-btn .icon { font-size: 1.5rem; }
+        .platform-btn .label { font-size: 0.78rem; color: var(--muted); }
+        .platform-btn.run-all { background: var(--accent); color: #0d0e12; border-color: var(--accent); }
+        .platform-btn.run-all:hover:not(:disabled) { background: #e6a830; box-shadow: 0 0 20px var(--accent-glow); }
+        .platform-btn.run-all .label { color: rgba(0,0,0,0.6); }
+        .platform-btn.stop-btn { border-color: rgba(239,68,68,0.3); color: var(--red); }
+        .platform-btn.stop-btn:hover:not(:disabled) { background: rgba(239,68,68,0.1); }
+
+        /* CONSOLE */
+        .console-wrap { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+        .console-bar {
+            background: #0a0b0f; padding: 10px 16px;
+            display: flex; align-items: center; gap: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+        .dot { width: 10px; height: 10px; border-radius: 50%; }
+        .dot-r { background: #ff5f56; } .dot-y { background: #ffbd2e; } .dot-g { background: #27c93f; }
+        .console-title { color: var(--muted); font-size: 0.78rem; font-family: 'JetBrains Mono', monospace; margin-left: 6px; }
+        .console-live-badge {
+            margin-left: auto; display: flex; align-items: center; gap: 5px;
+            font-size: 0.7rem; color: var(--green); font-weight: 600;
+        }
+        .live-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); animation: pulse 1s infinite; }
+        .console-body {
+            background: #080910; padding: 16px 20px;
+            height: 240px; overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace; font-size: 0.79rem; line-height: 1.8;
+        }
+        .console-body::-webkit-scrollbar { width: 4px; }
+        .console-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+        .log-line { color: var(--green); }
+        .log-error { color: var(--red); }
+        .log-info { color: var(--blue); }
+        .log-warn { color: var(--accent); }
+        .log-done { color: var(--green); font-weight: 600; }
+        .console-empty { color: var(--muted); font-style: italic; }
+
+        /* RIGHT SIDEBAR */
+        .right-col { display: flex; flex-direction: column; gap: 24px; }
+
+        /* RESUME UPLOAD */
+        .upload-zone {
+            border: 2px dashed var(--border); border-radius: 12px;
+            padding: 28px 20px; text-align: center; cursor: pointer;
+            transition: all 0.2s; position: relative; overflow: hidden;
+        }
+        .upload-zone:hover, .upload-zone.drag { border-color: var(--border-hover); background: var(--accent-dim); }
+        .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+        .upload-icon { font-size: 2.5rem; margin-bottom: 12px; }
+        .upload-title { font-size: 0.95rem; font-weight: 700; margin-bottom: 6px; }
+        .upload-sub { font-size: 0.8rem; color: var(--muted); }
+        .resume-active {
+            display: flex; align-items: center; gap: 10px;
+            background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2);
+            border-radius: 10px; padding: 12px 16px; margin-top: 14px;
+        }
+        .resume-active-icon { font-size: 1.2rem; }
+        .resume-active-name { font-size: 0.85rem; font-weight: 600; color: var(--green); }
+        .upload-status { font-size: 0.82rem; color: var(--muted); margin-top: 10px; text-align: center; }
+
+        /* PREFERENCES */
+        .form-group { margin-bottom: 18px; }
+        .form-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 8px; display: block; }
+        .form-input {
+            width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+            border-radius: 8px; padding: 10px 12px; color: #fff;
+            font-family: inherit; font-size: 0.88rem; transition: border-color 0.2s;
+        }
+        .form-input:focus { outline: none; border-color: var(--accent); }
+        .btn-save {
+            width: 100%; background: transparent; border: 1px solid var(--border-hover);
+            color: var(--accent); padding: 11px; border-radius: 8px;
+            font-weight: 700; font-size: 0.88rem; cursor: pointer; font-family: inherit;
+            transition: all 0.2s;
+        }
+        .btn-save:hover { background: var(--accent-dim); }
+
+        /* AI MATCHER */
+        .matcher-section { background: var(--bg3); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+        .matcher-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+        .matcher-title { font-size: 0.9rem; font-weight: 700; }
+        .matcher-status-label { font-size: 0.78rem; color: var(--muted); }
+        .btn-match {
+            width: 100%; background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2);
+            color: var(--blue); padding: 12px; border-radius: 10px;
+            font-weight: 700; font-size: 0.9rem; cursor: pointer; font-family: inherit;
+            transition: all 0.2s; margin-top: 12px;
+        }
+        .btn-match:hover:not(:disabled) { background: rgba(56,189,248,0.14); border-color: rgba(56,189,248,0.4); }
+        .btn-match:disabled { opacity: 0.5; cursor: not-allowed; }
+        .matcher-console {
+            background: #080910; border-radius: 8px; padding: 12px 14px;
+            height: 120px; overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace; font-size: 0.76rem; line-height: 1.7;
+            border: 1px solid var(--border); margin-top: 12px;
+        }
+        .matcher-console .log-line { color: var(--blue); }
+
+        /* TOAST */
+        .toast {
+            position: fixed; bottom: 32px; right: 32px; z-index: 999;
+            background: var(--bg2); border: 1px solid var(--border-hover);
+            border-radius: 12px; padding: 14px 20px;
+            display: flex; align-items: center; gap: 10px;
+            font-size: 0.88rem; font-weight: 500;
+            transform: translateY(100px); opacity: 0;
+            transition: all 0.35s cubic-bezier(0.34,1.56,0.64,1);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.success { border-color: rgba(34,197,94,0.3); }
+        .toast.error { border-color: rgba(239,68,68,0.3); }
+
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+        @media (max-width: 960px) {
+            nav, .page-header { padding-left: 20px; padding-right: 20px; }
+            .main { grid-template-columns: 1fr; padding: 24px 20px; }
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+            .platform-grid { grid-template-columns: 1fr 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <a href="/" class="nav-logo">JobMatch <span>AI</span></a>
+    <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/jobs">Browse Jobs</a>
+        <a href="/scraper" class="active">Scrape Jobs</a>
+    </div>
+    <a href="/jobs" class="nav-cta">View Jobs →</a>
+</nav>
+
+<!-- PAGE HEADER -->
+<div class="page-header">
+    <div class="page-header-inner">
+        <div>
+            <div class="page-tag">AI Scraper Control Panel</div>
+            <h1 class="page-title">Run the Job Crawler</h1>
+            <p class="page-sub">Autonomously scrapes LinkedIn, Naukri & Indeed — AI filters results and stores only relevant tech roles.</p>
+        </div>
+        <div id="statusPill" class="status-pill">
+            <div class="status-dot"></div>
+            <span id="statusText">Idle</span>
+        </div>
+    </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+    <!-- LEFT -->
+    <div class="left-col">
+
+        <!-- STATS -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title">Live Run Statistics</div>
+                <div class="panel-sub">Updates every 2 seconds while scraper is running</div>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-box" id="boxStatus">
+                    <div class="stat-val" id="statStatus">—</div>
+                    <div class="stat-lbl">Status</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-val accent" id="statLinks">0</div>
+                    <div class="stat-lbl">Links Found</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-val" id="statProcessed">0</div>
+                    <div class="stat-lbl">Processed</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-val green" id="statAdded">0</div>
+                    <div class="stat-lbl">Added to DB</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PLATFORM SELECT -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title">Choose Source Platform</div>
+                <div class="panel-sub">Select a platform or run all at once</div>
+            </div>
+            <div class="platform-grid">
+                <button id="btnAll" class="platform-btn run-all" onclick="startScraper('all')">
+                    <span class="icon">🚀</span>
+                    Run All
+                    <span class="label">All platforms</span>
+                </button>
+                <button id="btnLinkedin" class="platform-btn" onclick="startScraper('linkedin')">
+                    <span class="icon">💼</span>
+                    LinkedIn
+                    <span class="label">Guest API</span>
+                </button>
+                <button id="btnNaukri" class="platform-btn" onclick="startScraper('naukri')">
+                    <span class="icon">🇮🇳</span>
+                    Naukri
+                    <span class="label">India jobs</span>
+                </button>
+                <button id="btnStop" class="platform-btn stop-btn" onclick="stopScraper()" disabled>
+                    <span class="icon">🛑</span>
+                    Stop
+                    <span class="label">Cancel run</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- CONSOLE -->
+        <div class="panel" style="padding: 0;">
+            <div class="console-wrap">
+                <div class="console-bar">
+                    <div class="dot dot-r"></div>
+                    <div class="dot dot-y"></div>
+                    <div class="dot dot-g"></div>
+                    <span class="console-title">scraper_agent.log</span>
+                    <div class="console-live-badge">
+                        <div class="live-dot"></div> LIVE
+                    </div>
+                </div>
+                <div class="console-body" id="logConsole">
+                    <span class="console-empty">Waiting for scraper to start...</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- RIGHT -->
+    <div class="right-col">
+
+        <!-- RESUME UPLOAD -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title">📄 Your Resume</div>
+                <div class="panel-sub">Used by AI for job matching. PDF only.</div>
+            </div>
+
+            <div class="upload-zone" id="uploadZone">
+                <input type="file" id="resumeFile" accept=".pdf" onchange="uploadResume()">
+                <div class="upload-icon">📎</div>
+                <div class="upload-title">Drop your PDF here</div>
+                <div class="upload-sub">or click to browse files</div>
+            </div>
+
+            {% if config and config.resume_filename %}
+            <div class="resume-active" id="resumeBadge">
+                <div class="resume-active-icon">✅</div>
+                <div>
+                    <div class="resume-active-name">{{ config.resume_filename }}</div>
+                    <div style="font-size:0.75rem; color:var(--muted);">Active resume — click above to replace</div>
+                </div>
+            </div>
+            {% else %}
+            <div class="resume-active" id="resumeBadge" style="display:none;"></div>
+            {% endif %}
+
+            <div class="upload-status" id="uploadStatus"></div>
+        </div>
+
+        <!-- PREFERENCES -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title">⚙️ Search Preferences</div>
+                <div class="panel-sub">Target roles and locations for scraping</div>
+            </div>
+            <form id="prefForm" onsubmit="savePreferences(event)">
+                <div class="form-group">
+                    <label class="form-label">Target Job Roles</label>
+                    <input type="text" name="target_roles" class="form-input"
+                           value="{{ config.target_roles if config else '' }}"
+                           placeholder="Python Developer, AI Engineer...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Target Locations</label>
+                    <input type="text" name="target_locations" class="form-input"
+                           value="{{ config.target_locations if config else '' }}"
+                           placeholder="Remote, Bangalore, Hybrid...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Groq API Key</label>
+                    <input type="password" name="groq_api_key" class="form-input"
+                           value="{{ config.groq_api_key if config else '' }}"
+                           placeholder="gsk_... (leave blank to use .env)">
+                </div>
+                <button type="submit" class="btn-save">💾 Save Preferences</button>
+            </form>
+        </div>
+
+        <!-- AI MATCHER -->
+        <div class="panel">
+            <div class="matcher-section">
+                <div class="matcher-header">
+                    <div class="matcher-title">🎯 AI Resume Matcher</div>
+                    <div class="matcher-status-label" id="matchStatusLabel">Idle</div>
+                </div>
+                <div style="font-size:0.82rem; color:var(--muted); line-height:1.6; margin-bottom:4px;">
+                    Scores every job in the database against your resume. Upload a resume first.
+                </div>
+                <button id="matchBtn" class="btn-match" onclick="startMatching()">
+                    🧠 Run AI Match Now
+                </button>
+                <div class="matcher-console" id="matcherConsole">
+                    <span class="console-empty">AI matcher output will appear here...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- QUICK LINKS -->
+        <div class="panel" style="background: var(--accent-dim); border-color: var(--border-hover);">
+            <div style="font-size:0.82rem; font-weight:700; color:var(--accent); margin-bottom:12px; text-transform:uppercase; letter-spacing:1px;">Quick Actions</div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <a href="/jobs" style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:rgba(0,0,0,0.2); border-radius:8px; text-decoration:none; color:var(--text); font-size:0.88rem; font-weight:500; transition:all 0.2s;">
+                    🔍 <span>Browse Job Board</span>
+                </a>
+                <a href="/" style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:rgba(0,0,0,0.2); border-radius:8px; text-decoration:none; color:var(--text); font-size:0.88rem; font-weight:500; transition:all 0.2s;">
+                    🏠 <span>Back to Home</span>
+                </a>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast">
+    <span id="toastIcon">✓</span>
+    <span id="toastMsg">Done!</span>
+</div>
+
+<script>
+    let scraperPoll = null;
+    let matcherPoll = null;
+
+    function showToast(msg, type = 'success') {
+        const toast = document.getElementById('toast');
+        const icon = type === 'success' ? '✅' : '❌';
+        document.getElementById('toastIcon').textContent = icon;
+        document.getElementById('toastMsg').textContent = msg;
+        toast.className = `toast show ${type}`;
+        setTimeout(() => toast.className = 'toast', 3000);
+    }
+
+    function setButtons(disabled) {
+        ['btnAll','btnLinkedin','btnNaukri'].forEach(id => document.getElementById(id).disabled = disabled);
+        document.getElementById('btnStop').disabled = !disabled;
+    }
+
+    function startScraper(platform) {
+        fetch('/jobs/scraper/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ platform })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                setButtons(true);
+                showToast('Scraper started!');
+                if (!scraperPoll) scraperPoll = setInterval(pollScraper, 2000);
+                pollScraper();
+            } else {
+                showToast(data.error || 'Already running', 'error');
+            }
+        });
+    }
+
+    function stopScraper() {
+        fetch('/jobs/scraper/stop', { method: 'POST' })
+        .then(() => showToast('Stop signal sent.', 'error'));
+    }
+
+    function pollScraper() {
+        fetch('/jobs/scraper/status')
+        .then(r => r.json())
+        .then(data => {
+            // Stats
+            document.getElementById('statStatus').textContent = data.status;
+            document.getElementById('statLinks').textContent = data.links_found;
+            document.getElementById('statProcessed').textContent = data.processed_count;
+            document.getElementById('statAdded').textContent = data.added_count;
+
+            // Status pill
+            const pill = document.getElementById('statusPill');
+            const txt = document.getElementById('statusText');
+            txt.textContent = data.status;
+            pill.className = 'status-pill';
+            if (['Searching','Crawling','Parsing'].includes(data.status)) {
+                pill.classList.add('running');
+                setButtons(true);
+            } else if (data.status === 'Completed') {
+                pill.classList.add('completed');
+                setButtons(false);
+            } else if (data.status === 'Failed') {
+                pill.classList.add('failed');
+                setButtons(false);
+            } else {
+                setButtons(false);
+            }
+
+            // Console
+            const console_ = document.getElementById('logConsole');
+            if (data.logs && data.logs.length > 0) {
+                console_.innerHTML = data.logs.map(l => {
+                    const cls = l.includes('Error') ? 'log-error' :
+                                l.includes('✅') ? 'log-done' :
+                                l.includes('Skip') || l.includes('Duplicate') ? 'log-warn' :
+                                l.includes('Searching') || l.includes('Found') ? 'log-info' : 'log-line';
+                    return `<div class="${cls}">${escHtml(l)}</div>`;
+                }).join('');
+                console_.scrollTop = console_.scrollHeight;
+            }
+
+            // Stop polling when idle/done
+            const isRunning = ['Searching','Crawling','Parsing'].includes(data.status);
+            if (!isRunning && scraperPoll) {
+                clearInterval(scraperPoll);
+                scraperPoll = null;
+            }
+        });
+    }
+
+    function startMatching() {
+        fetch('/jobs/matcher/start', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('matchBtn').disabled = true;
+                document.getElementById('matchBtn').textContent = '⏳ Matching...';
+                showToast('AI matching started!');
+                if (!matcherPoll) matcherPoll = setInterval(pollMatcher, 2000);
+            } else {
+                showToast(data.error || 'Upload a resume first.', 'error');
+            }
+        });
+    }
+
+    function pollMatcher() {
+        fetch('/jobs/matcher/status')
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('matchStatusLabel').textContent = data.status;
+            const isRunning = data.status === 'Running';
+            document.getElementById('matchBtn').disabled = isRunning;
+            document.getElementById('matchBtn').textContent = isRunning ? '⏳ Matching...' : '🧠 Run AI Match Now';
+
+            const mc = document.getElementById('matcherConsole');
+            if (data.logs && data.logs.length > 0) {
+                mc.innerHTML = data.logs.map(l =>
+                    `<div class="log-line">${escHtml(l)}</div>`
+                ).join('');
+                mc.scrollTop = mc.scrollHeight;
+            }
+
+            if (!isRunning && matcherPoll) {
+                clearInterval(matcherPoll);
+                matcherPoll = null;
+                if (data.status === 'Completed') showToast('Matching complete! Check the job board.');
+            }
+        });
+    }
+
+    function savePreferences(e) {
+        e.preventDefault();
+        const formData = new FormData(document.getElementById('prefForm'));
+        fetch('/config/preferences', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => showToast(data.success ? 'Preferences saved!' : 'Save failed', data.success ? 'success' : 'error'));
+    }
+
+    function uploadResume() {
+        const file = document.getElementById('resumeFile').files[0];
+        if (!file) return;
+        const status = document.getElementById('uploadStatus');
+        status.textContent = '⏳ Uploading and parsing PDF...';
+
+        const fd = new FormData();
+        fd.append('resume', file);
+        fetch('/config/resume', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                status.textContent = '';
+                const badge = document.getElementById('resumeBadge');
+                badge.style.display = 'flex';
+                badge.innerHTML = `<div class="resume-active-icon">✅</div><div><div class="resume-active-name">${data.filename}</div><div style="font-size:0.75rem;color:var(--muted);">Active resume</div></div>`;
+                showToast('Resume uploaded and parsed!');
+            } else {
+                status.textContent = '❌ ' + data.message;
+                showToast(data.message, 'error');
+            }
+        });
+    }
+
+    // Drag-and-drop
+    const zone = document.getElementById('uploadZone');
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+    zone.addEventListener('drop', e => {
+        e.preventDefault(); zone.classList.remove('drag');
+        const file = e.dataTransfer.files[0];
+        if (file && file.name.endsWith('.pdf')) {
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            document.getElementById('resumeFile').files = dt.files;
+            uploadResume();
+        }
+    });
+
+    function escHtml(str) {
+        return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // Init poll to restore state
+    pollScraper();
+    pollMatcher();
+</script>
+</body>
+</html>

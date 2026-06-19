@@ -497,17 +497,42 @@ def job_matcher_thread_loop(app_context):
 # Routes
 @app.route("/")
 def index():
+    return render_template("home.html")
+
+@app.route("/jobs")
+def jobs_page():
     jobs = Job.query.filter_by(is_active=True).order_by(Job.created_at.desc()).all()
     config = SearchConfig.query.first()
-    
-    # Map matches
     matches = JobMatch.query.all()
     matches_dict = {m.job_id: m for m in matches}
-    
     return render_template(
-        "index.html", 
-        jobs=jobs, 
-        scraper_status=SCRAPER_STATUS, 
+        "jobs.html",
+        jobs=jobs,
+        config=config,
+        matches_dict=matches_dict
+    )
+
+@app.route("/scraper")
+def scraper_page():
+    config = SearchConfig.query.first()
+    return render_template(
+        "scraper.html",
+        scraper_status=SCRAPER_STATUS,
+        matcher_status=MATCHER_STATUS,
+        config=config
+    )
+
+# Legacy dashboard (keep for backward compat)
+@app.route("/dashboard")
+def dashboard():
+    jobs = Job.query.filter_by(is_active=True).order_by(Job.created_at.desc()).all()
+    config = SearchConfig.query.first()
+    matches = JobMatch.query.all()
+    matches_dict = {m.job_id: m for m in matches}
+    return render_template(
+        "index.html",
+        jobs=jobs,
+        scraper_status=SCRAPER_STATUS,
         matcher_status=MATCHER_STATUS,
         config=config,
         matches_dict=matches_dict
