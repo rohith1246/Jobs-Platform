@@ -12,6 +12,8 @@ import requests
 from bs4 import BeautifulSoup
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 from groq import Groq
 from dotenv import load_dotenv
 import pypdf
@@ -35,7 +37,22 @@ else:
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
 # Models
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
 class Job(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(255), nullable=False)
@@ -56,6 +73,7 @@ class Job(db.Model):
 
 class SearchConfig(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=True)
     target_roles = db.Column(db.String(512), default="Python Developer, AI Engineer, Fullstack Developer")
     target_locations = db.Column(db.String(512), default="Remote, Bangalore, Hybrid")
     resume_text = db.Column(db.Text, nullable=True)
@@ -64,6 +82,7 @@ class SearchConfig(db.Model):
 
 class JobMatch(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=True)
     job_id = db.Column(db.Integer, db.ForeignKey("job.id", ondelete="CASCADE"))
     fit_score = db.Column(db.Integer, default=0)
     explanation = db.Column(db.Text, nullable=True)
@@ -74,11 +93,22 @@ class JobMatch(db.Model):
 
 # Initialize DB tables on startup (compatible with gunicorn/Render)
 def _init_db():
-    from sqlalchemy import inspect as sa_inspect
     db.create_all()
-    inspector = sa_inspect(db.engine)
-    if not inspector.has_table("search_config") or not SearchConfig.query.first():
-        db.session.add(SearchConfig())
+    # Seed admin user
+    admin_email = "rohithbuildsofficial@gmail.com"
+    admin = User.query.filter_by(email=admin_email).first()
+    if not admin:
+        admin = User(
+            username="admin",
+            email=admin_email,
+            password_hash=generate_password_hash("admin1234")
+        )
+        db.session.add(admin)
+        db.session.commit()
+        
+        # Create SearchConfig for admin
+        config = SearchConfig(user_id=admin.id)
+        db.session.add(config)
         db.session.commit()
 
 with app.app_context():
@@ -125,8 +155,8 @@ def add_matcher_log(msg):
         MATCHER_STATUS["logs"].pop(0)
     logging.info(f"[Matcher] {msg}")
 
-def call_groq_with_fallback(messages, max_tokens=1000):
-    config = SearchConfig.query.first()
+def call_groq_with_fallback(messages, user_id=None, max_tokens=1000):
+    config = SearchConfig.query.filter_by(user_id=user_id).first() if user_id else SearchConfig.query.first()
     api_key = config.groq_api_key if (config and config.groq_api_key) else os.getenv("GROQ_API_KEY")
     if not api_key:
         raise RuntimeError("GROQ_API_KEY is not set.")
@@ -427,14 +457,14 @@ def job_scraper_thread_loop(target_platform, app_context):
         SCRAPER_STATUS["last_run"] = time.strftime("%Y-%m-%d %H:%M:%S")
         add_scraper_log("✅ Job scraper run finished.")
 
-def job_matcher_thread_loop(app_context):
+def job_matcher_thread_loop(user_id, app_context):
     global MATCHER_STATUS
     with app_context:
         MATCHER_STATUS["status"] = "Running"
         MATCHER_STATUS["logs"] = []
         add_matcher_log("Starting AI match evaluations against candidate resume...")
         
-        config = SearchConfig.query.first()
+        config = SearchConfig.query.filter_by(user_id=user_id).first()
         if not config or not config.resume_text:
             add_matcher_log("Aborted: No resume uploaded yet.")
             MATCHER_STATUS["status"] = "Failed"
@@ -446,7 +476,7 @@ def job_matcher_thread_loop(app_context):
         
         for idx, job in enumerate(active_jobs):
             # Exclude already matched jobs
-            existing_match = JobMatch.query.filter_by(job_id=job.id).first()
+            existing_match = JobMatch.query.filter_by(job_id=job.id, user_id=user_id).first()
             if existing_match:
                 continue
                 
@@ -475,11 +505,12 @@ def job_matcher_thread_loop(app_context):
                 ai_output = call_groq_with_fallback([
                     {"role": "system", "content": "You are a professional AI recruiter. Output JSON only."},
                     {"role": "user", "content": prompt}
-                ])
+                ], user_id=user_id)
                 cleaned = ai_output.strip().strip("`").replace("json", "").strip()
                 res = json.loads(cleaned)
                 
                 match = JobMatch(
+                    user_id=user_id,
                     job_id=job.id,
                     fit_score=res.get("fit_score", 0),
                     explanation=res.get("explanation", ""),
@@ -495,6 +526,74 @@ def job_matcher_thread_loop(app_context):
         add_matcher_log("✅ Resume AI matching completed successfully.")
 
 # Routes
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if current_user.is_authenticated:
+        return redirect(url_for("matcher_page"))
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        email = request.form.get("email", "").strip()
+        password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
+        
+        if not username or not email or not password:
+            flash("All fields are required.", "error")
+            return render_template("register.html")
+            
+        if password != confirm_password:
+            flash("Passwords do not match.", "error")
+            return render_template("register.html")
+            
+        existing_user = User.query.filter((User.username == username) | (User.email == email)).first()
+        if existing_user:
+            flash("Username or email already exists.", "error")
+            return render_template("register.html")
+            
+        new_user = User(
+            username=username,
+            email=email,
+            password_hash=generate_password_hash(password)
+        )
+        db.session.add(new_user)
+        db.session.commit()
+        
+        # Create SearchConfig for new user
+        new_config = SearchConfig(user_id=new_user.id)
+        db.session.add(new_config)
+        db.session.commit()
+        
+        flash("Registration successful! You can now log in.", "success")
+        return redirect(url_for("login"))
+        
+    return render_template("register.html")
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for("matcher_page"))
+    if request.method == "POST":
+        email = request.form.get("email", "").strip()
+        password = request.form.get("password", "")
+        
+        user = User.query.filter_by(email=email).first()
+        if not user or not check_password_hash(user.password_hash, password):
+            flash("Invalid email or password.", "error")
+            return render_template("login.html")
+            
+        login_user(user)
+        flash("Logged in successfully!", "success")
+        if user.email == "rohithbuildsofficial@gmail.com":
+            return redirect(url_for("scraper_page"))
+        return redirect(url_for("matcher_page"))
+        
+    return render_template("login.html")
+
+@app.route("/logout")
+def logout():
+    logout_user()
+    flash("Logged out successfully.", "info")
+    return redirect(url_for("index"))
+
 @app.route("/")
 def index():
     return render_template("home.html")
@@ -502,8 +601,8 @@ def index():
 @app.route("/jobs")
 def jobs_page():
     jobs = Job.query.filter_by(is_active=True).order_by(Job.created_at.desc()).all()
-    config = SearchConfig.query.first()
-    matches = JobMatch.query.all()
+    config = SearchConfig.query.filter_by(user_id=current_user.id).first() if current_user.is_authenticated else None
+    matches = JobMatch.query.filter_by(user_id=current_user.id).all() if current_user.is_authenticated else []
     matches_dict = {m.job_id: m for m in matches}
     return render_template(
         "jobs.html",
@@ -513,9 +612,14 @@ def jobs_page():
     )
 
 @app.route("/matcher")
+@login_required
 def matcher_page():
-    config = SearchConfig.query.first()
-    matches = JobMatch.query.join(Job).filter(Job.is_active == True).order_by(JobMatch.fit_score.desc()).all()
+    config = SearchConfig.query.filter_by(user_id=current_user.id).first()
+    if not config:
+        config = SearchConfig(user_id=current_user.id)
+        db.session.add(config)
+        db.session.commit()
+    matches = JobMatch.query.join(Job).filter(Job.is_active == True, JobMatch.user_id == current_user.id).order_by(JobMatch.fit_score.desc()).all()
     matched_jobs = [{"job": m.job, "match": m} for m in matches]
     return render_template(
         "matcher.html",
@@ -526,32 +630,31 @@ def matcher_page():
 
 @app.route("/scraper")
 def scraper_page():
-    config = SearchConfig.query.first()
+    admin_user = User.query.filter_by(email="rohithbuildsofficial@gmail.com").first()
+    config = SearchConfig.query.filter_by(user_id=admin_user.id).first() if admin_user else SearchConfig.query.first()
+    if not config:
+        config = SearchConfig()
+        db.session.add(config)
+        db.session.commit()
+    is_admin = current_user.is_authenticated and current_user.email == "rohithbuildsofficial@gmail.com"
     return render_template(
         "scraper.html",
         scraper_status=SCRAPER_STATUS,
         matcher_status=MATCHER_STATUS,
-        config=config
+        config=config,
+        is_admin=is_admin
     )
 
 # Legacy dashboard (keep for backward compat)
 @app.route("/dashboard")
 def dashboard():
-    jobs = Job.query.filter_by(is_active=True).order_by(Job.created_at.desc()).all()
-    config = SearchConfig.query.first()
-    matches = JobMatch.query.all()
-    matches_dict = {m.job_id: m for m in matches}
-    return render_template(
-        "index.html",
-        jobs=jobs,
-        scraper_status=SCRAPER_STATUS,
-        matcher_status=MATCHER_STATUS,
-        config=config,
-        matches_dict=matches_dict
-    )
+    return redirect(url_for("jobs_page"))
 
 @app.route("/jobs/scraper/start", methods=["POST"])
 def start_scraper():
+    if not current_user.is_authenticated or current_user.email != "rohithbuildsofficial@gmail.com":
+        return jsonify({"success": False, "error": "Unauthorized. Admin permissions required."}), 403
+        
     global SCRAPER_THREAD
     if SCRAPER_THREAD and SCRAPER_THREAD.is_alive():
         return jsonify({"success": False, "error": "Already running"})
@@ -569,6 +672,9 @@ def start_scraper():
 
 @app.route("/jobs/scraper/stop", methods=["POST"])
 def stop_scraper():
+    if not current_user.is_authenticated or current_user.email != "rohithbuildsofficial@gmail.com":
+        return jsonify({"success": False, "error": "Unauthorized. Admin permissions required."}), 403
+        
     SCRAPER_STOP_EVENT.set()
     return jsonify({"success": True})
 
@@ -578,9 +684,16 @@ def scraper_status():
 
 @app.route("/config/preferences", methods=["POST"])
 def save_preferences():
-    config = SearchConfig.query.first()
+    if not current_user.is_authenticated or current_user.email != "rohithbuildsofficial@gmail.com":
+        return jsonify({"success": False, "error": "Unauthorized. Admin permissions required."}), 403
+        
+    admin_user = User.query.filter_by(email="rohithbuildsofficial@gmail.com").first()
+    if not admin_user:
+        return jsonify({"success": False, "error": "Admin user not found."}), 500
+        
+    config = SearchConfig.query.filter_by(user_id=admin_user.id).first()
     if not config:
-        config = SearchConfig()
+        config = SearchConfig(user_id=admin_user.id)
         db.session.add(config)
     config.target_roles = request.form.get("target_roles", "")
     config.target_locations = request.form.get("target_locations", "")
@@ -589,6 +702,7 @@ def save_preferences():
     return jsonify({"success": True})
 
 @app.route("/config/resume", methods=["POST"])
+@login_required
 def upload_resume():
     if 'resume' not in request.files:
         return jsonify({"success": False, "message": "No file uploaded"}), 400
@@ -609,16 +723,16 @@ def upload_resume():
         if not extracted_text:
             return jsonify({"success": False, "message": "Could not extract text from PDF."}), 400
             
-        config = SearchConfig.query.first()
+        config = SearchConfig.query.filter_by(user_id=current_user.id).first()
         if not config:
-            config = SearchConfig()
+            config = SearchConfig(user_id=current_user.id)
             db.session.add(config)
             
         config.resume_text = extracted_text
         config.resume_filename = secure_filename(file.filename)
         
-        # Clear previous match scores
-        JobMatch.query.delete()
+        # Clear previous match scores for this user
+        JobMatch.query.filter_by(user_id=current_user.id).delete()
         db.session.commit()
         
         return jsonify({
@@ -630,16 +744,18 @@ def upload_resume():
         return jsonify({"success": False, "message": str(e)}), 500
 
 @app.route("/jobs/matcher/start", methods=["POST"])
+@login_required
 def trigger_matching():
     global MATCHER_THREAD
     if MATCHER_THREAD and MATCHER_THREAD.is_alive():
         return jsonify({"success": False, "error": "Matcher already running"})
         
-    MATCHER_THREAD = threading.Thread(target=job_matcher_thread_loop, args=(app.app_context(),), daemon=True)
+    MATCHER_THREAD = threading.Thread(target=job_matcher_thread_loop, args=(current_user.id, app.app_context()), daemon=True)
     MATCHER_THREAD.start()
     return jsonify({"success": True})
 
 @app.route("/jobs/matcher/status")
+@login_required
 def matcher_status():
     return jsonify(MATCHER_STATUS)
 

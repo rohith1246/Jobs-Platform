@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Account — JobMatch AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0b0f19; --bg2: #111827; --bg3: #1f2937;
+            --accent: #fbbf24; --accent-dim: rgba(251, 191, 36, 0.08); --accent-glow: rgba(251, 191, 36, 0.2);
+            --border: rgba(255,255,255,0.07); --border-y: rgba(251, 191, 36, 0.28);
+            --text: #f9fafb; --muted: #9ca3af;
+            --green: #10b981; --blue: #38bdf8; --red: #f87171;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+
+        /* NAV */
+        nav {
+            position: sticky; top: 0; z-index: 200; height: 62px; padding: 0 40px;
+            display: flex; align-items: center; justify-content: space-between;
+            background: rgba(13,14,18,0.9); backdrop-filter: blur(18px);
+            border-bottom: 1px solid var(--border);
+        }
+        .logo { font-size: 1.15rem; font-weight: 800; text-decoration: none; color: #fff; }
+        .logo span { color: var(--accent); }
+        .nav-center { display: flex; gap: 6px; }
+        .nav-link { padding: 7px 14px; border-radius: 8px; font-size: 0.875rem; font-weight: 500; text-decoration: none; color: var(--muted); transition: all 0.18s; }
+        .nav-link:hover { color: #fff; background: rgba(255,255,255,0.05); }
+        .nav-link.active { color: #fff; background: rgba(255,255,255,0.07); }
+        .nav-btn { padding: 8px 18px; border-radius: 8px; font-weight: 700; font-size: 0.85rem; text-decoration: none; background: var(--accent); color: #0d0e12; transition: all 0.18s; }
+        .nav-btn:hover { background: #e6a830; }
+
+        /* AUTH CONTAINER */
+        .auth-container {
+            flex: 1; display: flex; align-items: center; justify-content: center;
+            padding: 40px 20px;
+            background: radial-gradient(circle at top right, rgba(251,191,36,0.03) 0%, transparent 60%);
+        }
+        .auth-card {
+            width: 100%; max-width: 440px;
+            background: var(--bg2); border: 1px solid var(--border);
+            border-radius: 16px; padding: 40px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+        .auth-header { text-align: center; margin-bottom: 30px; }
+        .auth-header h1 { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 8px; color: #fff; }
+        .auth-header p { font-size: 0.88rem; color: var(--muted); }
+
+        /* FORM */
+        .form-group { margin-bottom: 18px; display: flex; flex-direction: column; gap: 6px; }
+        .form-label { font-size: 0.82rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .form-input {
+            width: 100%; padding: 12px 16px; border-radius: 10px;
+            background: var(--bg); border: 1px solid var(--border);
+            color: var(--text); font-family: inherit; font-size: 0.95rem; outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .form-input:focus { border-color: var(--border-y); box-shadow: 0 0 12px var(--accent-glow); }
+        .form-input::placeholder { color: rgba(255,255,255,0.15); }
+
+        .btn-auth {
+            width: 100%; padding: 13px; border-radius: 10px; border: none;
+            background: var(--accent); color: #0d0e12;
+            font-weight: 750; font-size: 0.95rem; cursor: pointer; font-family: inherit;
+            transition: all 0.2s; margin-top: 10px;
+        }
+        .btn-auth:hover { background: #e6a830; box-shadow: 0 0 20px var(--accent-glow); transform: translateY(-1px); }
+
+        /* FLASH MESSAGES */
+        .flash-messages { margin-bottom: 20px; }
+        .flash {
+            padding: 12px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 500;
+            margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
+        }
+        .flash.error { background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.25); color: var(--red); }
+        .flash.success { background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); color: var(--green); }
+        .flash.info { background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.25); color: var(--blue); }
+
+        .auth-footer { text-align: center; margin-top: 24px; font-size: 0.88rem; color: var(--muted); }
+        .auth-footer a { color: var(--accent); text-decoration: none; font-weight: 600; }
+        .auth-footer a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+    <a href="/" class="logo">JobMatch <span>AI</span></a>
+    <div class="nav-center">
+        <a href="/" class="nav-link">Home</a>
+        <a href="/jobs" class="nav-link">Jobs</a>
+        <a href="/matcher" class="nav-link">AI Matcher</a>
+        <a href="/scraper" class="nav-link">Scraper</a>
+    </div>
+    <a href="/login" class="nav-btn">Log In</a>
+</nav>
+
+<!-- AUTH CONTAINER -->
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <h1>Create Account</h1>
+            <p>Get started with autonomous job matching</p>
+        </div>
+
+        <!-- Flash messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="flash {{ category if category != 'message' else 'info' }}">
+                            {% if category == 'error' %}⚠️{% else %}ℹ️{% endif %} {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="/register">
+            
+            <div class="form-group">
+                <label class="form-label" for="username">Username</label>
+                <input class="form-input" type="text" id="username" name="username" required placeholder="yourusername">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="email">Email Address</label>
+                <input class="form-input" type="email" id="email" name="email" required placeholder="you@example.com">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="password">Password</label>
+                <input class="form-input" type="password" id="password" name="password" required placeholder="••••••••">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="confirm_password">Confirm Password</label>
+                <input class="form-input" type="password" id="confirm_password" name="confirm_password" required placeholder="••••••••">
+            </div>
+
+            <button type="submit" class="btn-auth">Sign Up</button>
+        </form>
+
+        <div class="auth-footer">
+            Already have an account? <a href="/login">Log In</a>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

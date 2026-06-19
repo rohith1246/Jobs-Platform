@@ -160,8 +160,17 @@
         <a href="/jobs" class="nav-link">Jobs</a>
         <a href="/matcher" class="nav-link">AI Matcher</a>
         <a href="/scraper" class="nav-link active">Scraper</a>
+        {% if current_user.is_authenticated %}
+        <a href="/logout" class="nav-link">Logout</a>
+        {% else %}
+        <a href="/login" class="nav-link">Login</a>
+        {% endif %}
     </div>
-    <a href="/jobs" class="nav-btn">View Jobs</a>
+    {% if current_user.is_authenticated %}
+    <a href="/matcher" class="nav-btn">AI Matcher</a>
+    {% else %}
+    <a href="/register" class="nav-btn">Get Started</a>
+    {% endif %}
 </nav>
 
 <!-- HERO -->
@@ -211,17 +220,17 @@
         <div class="panel-title">Select Source Platform</div>
         <div class="panel-sub">Pick a specific platform or scrape all at once. AI filters and validates each result.</div>
         <div class="platform-row">
-            <button id="btnAll" class="plat-btn run-all" onclick="startScraper('all')">
+            <button id="btnAll" class="plat-btn run-all" onclick="startScraper('all')" {% if not is_admin %}disabled title="Admin authorization required"{% endif %}>
                 <div class="plat-ico">🚀</div>
                 <div class="plat-name">Run All</div>
                 <div class="plat-hint">All 3 platforms</div>
             </button>
-            <button id="btnLinkedin" class="plat-btn" onclick="startScraper('linkedin')">
+            <button id="btnLinkedin" class="plat-btn" onclick="startScraper('linkedin')" {% if not is_admin %}disabled title="Admin authorization required"{% endif %}>
                 <div class="plat-ico">💼</div>
                 <div class="plat-name">LinkedIn</div>
                 <div class="plat-hint">Guest API</div>
             </button>
-            <button id="btnNaukri" class="plat-btn" onclick="startScraper('naukri')">
+            <button id="btnNaukri" class="plat-btn" onclick="startScraper('naukri')" {% if not is_admin %}disabled title="Admin authorization required"{% endif %}>
                 <div class="plat-ico">🇮🇳</div>
                 <div class="plat-name">Naukri</div>
                 <div class="plat-hint">India jobs</div>
@@ -247,6 +256,43 @@
             <span class="tl-muted">Waiting for scraper to start...</span>
         </div>
     </div>
+
+    <!-- SETTINGS PANEL (Only for Admin or Read-only for Guest) -->
+    {% if is_admin %}
+    <div class="panel">
+        <div class="panel-title">Scraper Target Preferences & API Keys</div>
+        <div class="panel-sub">Configure target roles, locations, and the Groq API key used by the background scraper.</div>
+        
+        <form id="prefForm" onsubmit="savePreferences(event)">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div class="form-group" style="display:flex; flex-direction:column; gap:6px;">
+                    <label class="form-label" style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); font-weight:600;">Target Job Roles</label>
+                    <input type="text" name="target_roles" class="form-input" value="{{ config.target_roles or '' }}" placeholder="Python, Backend Developer" style="width:100%; padding:10px 14px; background:var(--bg3); border:1px solid var(--border); border-radius:8px; color:#fff; font-family:inherit;">
+                </div>
+                <div class="form-group" style="display:flex; flex-direction:column; gap:6px;">
+                    <label class="form-label" style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); font-weight:600;">Target Locations</label>
+                    <input type="text" name="target_locations" class="form-input" value="{{ config.target_locations or '' }}" placeholder="Remote, Bangalore" style="width:100%; padding:10px 14px; background:var(--bg3); border:1px solid var(--border); border-radius:8px; color:#fff; font-family:inherit;">
+                </div>
+            </div>
+            <div class="form-group" style="display:flex; flex-direction:column; gap:6px; margin-bottom: 20px;">
+                <label class="form-label" style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); font-weight:600;">Groq API Key (Falls back to .env if empty)</label>
+                <input type="password" name="groq_api_key" class="form-input" value="{{ config.groq_api_key or '' }}" placeholder="gsk_..." style="width:100%; padding:10px 14px; background:var(--bg3); border:1px solid var(--border); border-radius:8px; color:#fff; font-family:inherit;">
+            </div>
+            <button type="submit" class="nav-btn" style="width: 100%; padding: 12px; border:none; cursor:pointer;">💾 Save Preferences</button>
+        </form>
+    </div>
+    {% else %}
+    <div class="panel" style="background: rgba(255,255,255,0.01);">
+        <div class="panel-title" style="font-size: 0.9rem; color: var(--muted);">Active Scraper Configuration</div>
+        <div style="font-size: 0.88rem; margin-top: 6px; line-height: 1.6;">
+            <div>Target Roles: <strong style="color:var(--accent)">{{ config.target_roles or 'Python Developer, AI Engineer, Fullstack Developer' }}</strong></div>
+            <div>Target Locations: <strong style="color:var(--accent)">{{ config.target_locations or 'Remote, Bangalore, Hybrid' }}</strong></div>
+            <div style="font-size: 0.76rem; color: var(--muted); margin-top: 10px; font-style: italic;">
+                Only the administrator can modify these target parameters.
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- AFTER SCRAPING -->
     <div class="panel" style="border-color:var(--border-y); background:var(--accent-dim); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; padding: 22px 28px;">
@@ -276,8 +322,30 @@
     }
 
     function setRunning(running) {
-        ['btnAll','btnLinkedin','btnNaukri'].forEach(id => document.getElementById(id).disabled = running);
-        document.getElementById('btnStop').disabled = !running;
+        const isAdmin = {% if is_admin %}true{% else %}false{% endif %};
+        if (isAdmin) {
+            ['btnAll','btnLinkedin','btnNaukri'].forEach(id => document.getElementById(id).disabled = running);
+            document.getElementById('btnStop').disabled = !running;
+        } else {
+            ['btnAll','btnLinkedin','btnNaukri','btnStop'].forEach(id => document.getElementById(id).disabled = true);
+        }
+    }
+
+    function savePreferences(e) {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        fetch('/config/preferences', {
+            method: 'POST',
+            body: fd
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                showToast('Preferences saved successfully!');
+            } else {
+                showToast(data.error || 'Failed to save preferences', 'err');
+            }
+        });
     }
 
     function startScraper(platform) {

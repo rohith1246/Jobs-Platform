@@ -223,8 +223,17 @@
         <a href="/jobs" class="nav-link">Jobs</a>
         <a href="/matcher" class="nav-link active">AI Matcher</a>
         <a href="/scraper" class="nav-link">Scraper</a>
+        {% if current_user.is_authenticated %}
+        <a href="/logout" class="nav-link">Logout</a>
+        {% else %}
+        <a href="/login" class="nav-link">Login</a>
+        {% endif %}
     </div>
-    <a href="/jobs" class="nav-btn">Browse Jobs</a>
+    {% if current_user.is_authenticated %}
+    <a href="/matcher" class="nav-btn">AI Matcher</a>
+    {% else %}
+    <a href="/register" class="nav-btn">Get Started</a>
+    {% endif %}
 </nav>
 
 <!-- HERO -->
