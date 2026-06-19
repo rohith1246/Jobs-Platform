@@ -281,17 +281,6 @@
             <button type="submit" class="nav-btn" style="width: 100%; padding: 12px; border:none; cursor:pointer;">💾 Save Preferences</button>
         </form>
     </div>
-    {% else %}
-    <div class="panel" style="background: rgba(255,255,255,0.01);">
-        <div class="panel-title" style="font-size: 0.9rem; color: var(--muted);">Active Scraper Configuration</div>
-        <div style="font-size: 0.88rem; margin-top: 6px; line-height: 1.6;">
-            <div>Target Roles: <strong style="color:var(--accent)">{{ config.target_roles or 'Python Developer, AI Engineer, Fullstack Developer' }}</strong></div>
-            <div>Target Locations: <strong style="color:var(--accent)">{{ config.target_locations or 'Remote, Bangalore, Hybrid' }}</strong></div>
-            <div style="font-size: 0.76rem; color: var(--muted); margin-top: 10px; font-style: italic;">
-                Only the administrator can modify these target parameters.
-            </div>
-        </div>
-    </div>
     {% endif %}
 
     <!-- AFTER SCRAPING -->
