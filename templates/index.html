@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autonomous Job Scraper &amp; AI Resume Matcher</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #08090f;
+            --panel-bg: rgba(17, 19, 31, 0.6);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --accent: #fbbf24;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --success: #10b981;
+            --danger: #ef4444;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+            min-height: 100vh;
+            padding: 40px 0;
+            background-image: radial-gradient(circle at 10% 20%, rgba(251, 191, 36, 0.04) 0%, transparent 40%);
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+        
+        h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: 24px; display: flex; align-items: center; gap: 12px; }
+        h1 span { color: var(--accent); }
+
+        .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px; }
+        .panel { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 16px; padding: 24px; backdrop-filter: blur(10px); }
+        .panel-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 16px; color: #fff; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; }
+
+        .btn-group { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+        .btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn:hover { background: rgba(255, 255, 255, 0.1); }
+        .btn-accent { background: var(--accent); color: #000; font-weight: 600; border: none; }
+        .btn-accent:hover { background: #f59e0b; box-shadow: 0 0 12px rgba(251, 191, 36, 0.2); }
+        .btn-danger { background: var(--danger); color: #fff; border: none; }
+        .btn-danger:hover { background: #dc2626; }
+
+        .form-group { margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
+        .form-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600; }
+        .form-input { background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; color: #fff; font-family: inherit; font-size: 0.9rem; }
+        .form-input:focus { border-color: var(--accent); outline: none; }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+        .stat-card { background: rgba(0,0,0,0.2); padding: 16px; border-radius: 12px; border: 1px solid var(--border-color); text-align: center; }
+        .stat-val { font-size: 1.5rem; font-weight: 700; color: #fff; margin-bottom: 4px; }
+        .stat-lbl { font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); }
+
+        .console { background: #000; border-radius: 12px; border: 1px solid var(--border-color); padding: 16px; height: 180px; overflow-y: auto; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; line-height: 1.6; }
+        .console-line { color: var(--success); }
+        .console-thought { color: #fde047; }
+        .console-matcher { color: #38bdf8; }
+
+        .jobs-list { display: flex; flex-direction: column; gap: 16px; }
+        .job-item { background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; transition: border-color 0.2s; }
+        .job-item:hover { border-color: rgba(251, 191, 36, 0.2); }
+        .job-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px; }
+        .job-title { font-weight: 700; color: #fff; font-size: 1.25rem; }
+        .job-company { color: var(--accent); font-weight: 500; font-size: 0.95rem; margin-top: 4px; }
+        .job-meta { font-size: 0.85rem; color: var(--text-muted); margin-top: 8px; display: flex; gap: 16px; }
+        
+        .fit-badge { font-weight: 700; padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; }
+        .fit-high { background: rgba(16, 185, 129, 0.12); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .fit-med { background: rgba(245, 158, 11, 0.12); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
+
+        .match-details { background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-top: 16px; font-size: 0.9rem; }
+        .pitch-box { background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.2); padding: 12px; border-radius: 6px; margin-top: 10px; color: #38bdf8; font-family: inherit; font-size: 0.85rem; }
+
+        .resume-filename { background: rgba(16, 185, 129, 0.1); color: #10b981; padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 8px; border: 1px solid rgba(16, 185, 129, 0.2); margin-top: 8px; }
+
+        @media (max-width: 768px) {
+            .dashboard-grid { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>🤖 Autonomous <span>Job Scraper &amp; AI Resume Matcher</span></h1>
+
+        <div class="dashboard-grid">
+            <!-- Left panel: Scraper Console -->
+            <div class="panel">
+                <div class="panel-title">1. Job Crawler Controls</div>
+                <div class="btn-group">
+                    <button class="btn btn-accent" onclick="startScraper('all')">🚀 Run All</button>
+                    <button class="btn" onclick="startScraper('linkedin')">LinkedIn</button>
+                    <button class="btn" onclick="startScraper('naukri')">Naukri</button>
+                    <button class="btn" onclick="startScraper('indeed')">Indeed</button>
+                    <button id="stopBtn" class="btn btn-danger" onclick="stopScraper()" disabled>🛑 Stop</button>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-val" id="statStatus">-</div>
+                        <div class="stat-lbl">Status</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-val" id="statLinks">0</div>
+                        <div class="stat-lbl">Links Found</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-val" id="statProcessed">0</div>
+                        <div class="stat-lbl">Processed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-val" style="color: var(--success);" id="statAdded">0</div>
+                        <div class="stat-lbl">Added</div>
+                    </div>
+                </div>
+
+                <div class="panel-title" style="margin-top: 20px; font-size: 0.95rem;">Scraper Live Logs</div>
+                <div class="console" id="logConsole"></div>
+            </div>
+
+            <!-- Right panel: Resume and Matcher config -->
+            <div class="panel">
+                <div class="panel-title">2. AI Resume Evaluator &amp; Preferences</div>
+                
+                <form id="prefForm" onsubmit="savePreferences(event)">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="form-group">
+                            <label class="form-label">Target Job Roles</label>
+                            <input type="text" name="target_roles" class="form-input" value="{{ config.target_roles or '' }}" placeholder="Python, Backend Developer">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Target Locations</label>
+                            <input type="text" name="target_locations" class="form-input" value="{{ config.target_locations or '' }}" placeholder="Remote, Bangalore">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Groq API Key (Falls back to .env if empty)</label>
+                        <input type="password" name="groq_api_key" class="form-input" value="{{ config.groq_api_key or '' }}" placeholder="gsk_...">
+                    </div>
+                    <button type="submit" class="btn btn-accent" style="width: 100%; justify-content: center; margin-bottom: 16px;">💾 Save Preferences</button>
+                </form>
+
+                <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 16px;">
+                    <label class="form-label">Upload Resume (PDF only)</label>
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <input type="file" id="resumeFile" accept=".pdf" style="display: none;" onchange="uploadResume()">
+                        <button class="btn" onclick="document.getElementById('resumeFile').click()">📄 Choose PDF Resume</button>
+                        <span id="uploadStatus" style="font-size: 0.85rem; color: var(--text-muted);"></span>
+                    </div>
+                    {% if config.resume_filename %}
+                    <div id="resumeBadge">
+                        <div class="resume-filename">
+                            ✓ Active Resume: <strong>{{ config.resume_filename }}</strong>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div style="border-top: 1px solid var(--border-color); padding-top: 16px; margin-top: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <span class="form-label">AI Match Status: <strong id="matchStatusLabel">Idle</strong></span>
+                        <button id="matchBtn" class="btn btn-accent" style="padding: 8px 16px; font-size: 0.85rem;" onclick="startMatching()">🎯 Match Jobs</button>
+                    </div>
+                    <div class="console" style="height: 100px;" id="matcherConsole"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Discovered Jobs list -->
+        <div class="panel">
+            <div class="panel-title">Latest Discovered Jobs &amp; Matches</div>
+            <div class="jobs-list">
+                {% for job in jobs %}
+                {% set match = matches_dict.get(job.id) %}
+                <div class="job-item">
+                    <div class="job-header">
+                        <div>
+                            <div class="job-title">{{ job.title }}</div>
+                            <div class="job-company">{{ job.company }} &bull; {{ job.location }}</div>
+                        </div>
+                        {% if match %}
+                        <div class="fit-badge {% if match.fit_score >= 75 %}fit-high{% else %}fit-med{% endif %}">
+                            🎯 {{ match.fit_score }}% Match
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="job-meta">
+                        <span>Source: <strong>{{ job.source }}</strong></span>
+                        <span>Category: <strong>{{ job.category }}</strong></span>
+                        <span>Experience: <strong>{{ job.experience_level }}</strong></span>
+                        <span>Salary: <strong>{{ job.salary or 'N/A' }}</strong></span>
+                    </div>
+
+                    {% if match %}
+                    <div class="match-details">
+                        <strong style="color: var(--accent);">AI Fit Reason:</strong> {{ match.explanation }}
+                    </div>
+                    {% endif %}
+
+                    <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+                        <a href="{{ job.apply_url }}" target="_blank" class="btn btn-accent" style="padding: 8px 14px; font-size: 0.85rem;">Apply Directly</a>
+                    </div>
+                </div>
+                {% else %}
+                <div style="text-align: center; color: var(--text-muted); padding: 40px;">No jobs in database yet. Run the scraper to populate.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let scraperPoll = null;
+        let matcherPoll = null;
+
+        function savePreferences(e) {
+            e.preventDefault();
+            const form = document.getElementById('prefForm');
+            const formData = new FormData(form);
+            fetch('/config/preferences', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) alert("Preferences saved!");
+            });
+        }
+
+        function uploadResume() {
+            const fileInput = document.getElementById('resumeFile');
+            if (fileInput.files.length === 0) return;
+            
+            const formData = new FormData();
+            formData.append('resume', fileInput.files[0]);
+            
+            const statusSpan = document.getElementById('uploadStatus');
+            statusSpan.innerText = 'Uploading and parsing...';
+
+            fetch('/config/resume', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    statusSpan.innerText = '✓ Success!';
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    statusSpan.innerText = 'Error: ' + data.message;
+                }
+            })
+            .catch(err => {
+                statusSpan.innerText = 'Upload failed.';
+            });
+        }
+
+        function startScraper(platform) {
+            fetch('/jobs/scraper/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ platform: platform })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    pollScraper();
+                    if (!scraperPoll) scraperPoll = setInterval(pollScraper, 2000);
+                }
+            });
+        }
+
+        function stopScraper() {
+            fetch('/jobs/scraper/stop', { method: 'POST' });
+        }
+
+        function startMatching() {
+            fetch('/jobs/matcher/start', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    pollMatcher();
+                    if (!matcherPoll) matcherPoll = setInterval(pollMatcher, 2000);
+                } else {
+                    alert(data.error || "Failed to start matching. Make sure a resume is uploaded.");
+                }
+            });
+        }
+
+        function pollScraper() {
+            fetch('/jobs/scraper/status')
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('statStatus').innerText = data.status;
+                document.getElementById('statLinks').innerText = data.links_found;
+                document.getElementById('statProcessed').innerText = data.processed_count;
+                document.getElementById('statAdded').innerText = data.added_count;
+
+                const isRunning = (data.status !== 'Idle' && data.status !== 'Completed' && data.status !== 'Failed');
+                document.getElementById('stopBtn').disabled = !isRunning;
+
+                const logsConsole = document.getElementById('logConsole');
+                logsConsole.innerHTML = data.logs.map(l => `<div class="console-line">${l}</div>`).join('');
+                logsConsole.scrollTop = logsConsole.scrollHeight;
+
+                if (!isRunning && scraperPoll) {
+                    clearInterval(scraperPoll);
+                    scraperPoll = null;
+                    setTimeout(() => location.reload(), 1000);
+                }
+            });
+        }
+
+        function pollMatcher() {
+            fetch('/jobs/matcher/status')
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('matchStatusLabel').innerText = data.status;
+                
+                const isRunning = (data.status === 'Running' || data.status === 'Starting');
+                document.getElementById('matchBtn').disabled = isRunning;
+                document.getElementById('matchBtn').innerText = isRunning ? 'Matching...' : '🎯 Match Jobs';
+
+                const matcherConsole = document.getElementById('matcherConsole');
+                matcherConsole.innerHTML = data.logs.map(l => `<div class="console-matcher">${l}</div>`).join('');
+                matcherConsole.scrollTop = matcherConsole.scrollHeight;
+
+                if (!isRunning && matcherPoll) {
+                    clearInterval(matcherPoll);
+                    matcherPoll = null;
+                    setTimeout(() => location.reload(), 1500);
+                }
+            });
+        }
+
+        // Start polling initially to resume UI state
+        pollScraper();
+        pollMatcher();
+    </script>
+</body>
+</html>
